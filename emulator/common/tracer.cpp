@@ -3,7 +3,7 @@
 
 // emulator.cpp passes in a pointer to the Instruction Register 
 // found in the simulated processor.
-Tracer_t::Tracer_t(dat_t<32>* _inst_ptr, dat_t<1>* _stats_reg, dat_t<1>* _full_stall_ptr, FILE* log)
+Tracer_t::Tracer_t(dat_t<32>* _inst_ptr, dat_t<1>* _stats_reg, FILE* log, dat_t<1>* _full_stall_ptr)
 //Tracer_t::Tracer_t(dat_t<32>* _inst_ptr, FILE* log)
 {
    inst_ptr = _inst_ptr;
@@ -73,7 +73,7 @@ void Tracer_t::tick(bool increment_inst_count)
       uint32_t opc_hi = getBits(inst,6,5); 
       uint32_t opc_lo = getBits(inst,4,2); 
 
-      if (*is_freeze == 0x0) {
+      if (is_freeze == nullptr || *is_freeze == 0x0) {
          // don't increment on machine-generated bubbles
          if (increment_inst_count && inst != 0x4033)
             trace_data.inst_count++;

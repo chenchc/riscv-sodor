@@ -27,7 +27,7 @@
 class Tracer_t {
 
    public:
-      Tracer_t(dat_t<32>* _inst_ptr, dat_t<1>* _stats_reg, dat_t<1>* _full_stall_ptr, FILE* log);
+      Tracer_t(dat_t<32>* _inst_ptr, dat_t<1>* _stats_reg, FILE* log, dat_t<1>* _full_stall_ptr=nullptr);
 //      Tracer_t(dat_t<32>* _inst_ptr, FILE* log);
       void start();
       void tick(bool inc_inst_count);
