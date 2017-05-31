@@ -27,7 +27,7 @@
 class Tracer_t {
 
    public:
-      Tracer_t(dat_t<32>* _inst_ptr, dat_t<1>* _stats_reg, FILE* log);
+      Tracer_t(dat_t<32>* _inst_ptr, dat_t<1>* _stats_reg, dat_t<1>* _full_stall_ptr, FILE* log);
 //      Tracer_t(dat_t<32>* _inst_ptr, FILE* log);
       void start();
       void tick(bool inc_inst_count);
@@ -39,6 +39,7 @@ class Tracer_t {
       dat_t<1>*  stats_reg; // pointer to the StatsEnable co-processor register cr10.
                             // Allows the software to set when to start tracking stats
                             // by calling "li x1, 1; mtpcr cr10, x1".
+      dat_t<1>* is_freeze;
       FILE*      logfile;
       int        paused;
         
@@ -53,7 +54,7 @@ class Tracer_t {
          uint64_t arith_count;
          uint64_t br_count;  
          uint64_t misc_count;  
-
+         uint64_t dcache_miss_cycles;
 
          /* XXX Step 1: ADD MORE COUNTS HERE */
          uint64_t load_count;

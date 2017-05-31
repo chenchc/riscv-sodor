@@ -69,6 +69,7 @@ int main(int argc, char** argv)
 
    Tracer_t tracer(&dut.Top_tile_core_d__exe_reg_inst,
                    &dut.Top_tile_core_d_csr__reg_stats,
+                   &dut.Top_tile_core_c__full_stall,
                    stderr);
 
    if (loadmem)

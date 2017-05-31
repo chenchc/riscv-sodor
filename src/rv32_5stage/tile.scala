@@ -11,7 +11,7 @@ import Node._
 import Constants._
 import Common._   
 import Common.Util._   
-
+import AcaCustom._
 
 class SodorTileIo extends Bundle  
 {
@@ -24,9 +24,11 @@ class SodorTile(implicit val conf: SodorConfiguration) extends Module
    
    val core   = Module(new Core(resetSignal = io.host.reset))
    val memory = Module(new ScratchPadMemory(num_core_ports = 2))
+   val dcache = Module(new DCache())
 
    core.io.imem <> memory.io.core_ports(0)
-   core.io.dmem <> memory.io.core_ports(1)
+   core.io.dmem <> dcache.io.core_port
+   dcache.io.mem_port <> memory.io.core_ports(1)
 
    // HTIF/memory request
    memory.io.htif_port.req.valid     := io.host.mem_req.valid

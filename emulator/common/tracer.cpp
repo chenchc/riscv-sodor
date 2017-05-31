@@ -3,11 +3,12 @@
 
 // emulator.cpp passes in a pointer to the Instruction Register 
 // found in the simulated processor.
-Tracer_t::Tracer_t(dat_t<32>* _inst_ptr, dat_t<1>* _stats_reg, FILE* log)
+Tracer_t::Tracer_t(dat_t<32>* _inst_ptr, dat_t<1>* _stats_reg, dat_t<1>* _full_stall_ptr, FILE* log)
 //Tracer_t::Tracer_t(dat_t<32>* _inst_ptr, FILE* log)
 {
    inst_ptr = _inst_ptr;
    stats_reg = _stats_reg;
+   is_freeze = _full_stall_ptr;
    logfile  = log;
    paused   = 1;
 }
@@ -30,6 +31,7 @@ void Tracer_t::start()
    trace_data.misc_count  = 0;  
    trace_data.load_count  = 0;
    trace_data.store_count = 0;
+   trace_data.dcache_miss_cycles = 0;
 
    /* XXX Step 2: INITIALIZE YOUR COUNTERS HERE */
 }
@@ -59,7 +61,7 @@ void Tracer_t::tick(bool increment_inst_count)
 {
    // only collect stats if the tracer is not paused AND co-processor 
    // register cr10 is enabled.
-   if (!paused && stats_reg->lo_word() == 0x1)
+   if (!paused)
    {
       trace_data.cycles++;
 
@@ -71,26 +73,28 @@ void Tracer_t::tick(bool increment_inst_count)
       uint32_t opc_hi = getBits(inst,6,5); 
       uint32_t opc_lo = getBits(inst,4,2); 
 
-      // don't increment on machine-generated bubbles
-      if (increment_inst_count && inst != 0x4033)
-         trace_data.inst_count++;
-      
-      if (inst == 0x13) 
-         trace_data.nop_count++;
-      else if (inst == 0x4033) 
-         trace_data.bubble_count++;
-      else if (opcode == 0x37) //lui
-         trace_data.misc_count++;
-      else if (opcode == 0x63) 
-         trace_data.br_count++;
-      else if (opcode == 0x03 || opcode == 0x23) 
-         trace_data.ldst_count++;
-      else if (opc_lo == 0x6 || opc_lo == 0x4) 
-         trace_data.arith_count++;
+      if (*is_freeze == 0x0) {
+         // don't increment on machine-generated bubbles
+         if (increment_inst_count && inst != 0x4033)
+            trace_data.inst_count++;
+         
+         if (inst == 0x13) 
+            trace_data.nop_count++;
+         else if (inst == 0x4033) 
+            trace_data.bubble_count++;
+         else if (opcode == 0x37) //lui
+            trace_data.misc_count++;
+         else if (opcode == 0x63) 
+            trace_data.br_count++;
+         else if (opcode == 0x03 || opcode == 0x23) 
+            trace_data.ldst_count++;
+         else if (opc_lo == 0x6 || opc_lo == 0x4) 
+            trace_data.arith_count++;
+         else
+            trace_data.misc_count++;
+      }
       else
-         trace_data.misc_count++;
-
-      /* XXX Step 3. UPDATE YOUR COUNTERS HERE */
+         trace_data.dcache_miss_cycles++;
 
    }
 }
@@ -120,6 +124,7 @@ void Tracer_t::print()
    fprintf(logfile, "#      Ld/St instr : %2.3f %%\n",  100.0f * ((float) trace_data.ldst_count ) / trace_data.cycles);
    fprintf(logfile, "#      branch instr: %2.3f %%\n",  100.0f * ((float) trace_data.br_count   ) / trace_data.cycles);
    fprintf(logfile, "#      misc instr  : %2.3f %%\n",  100.0f * ((float) trace_data.misc_count ) / trace_data.cycles);
+   fprintf(logfile, "#      D-cache miss stall: %2.3f %%\n",  100.0f * ((float) trace_data.dcache_miss_cycles ) / trace_data.cycles);
    
    /* XXX Step 4. PRINT YOUR COUNTERS HERE */
    
