@@ -59,8 +59,13 @@ class Tracer_t {
          /* XXX Step 1: ADD MORE COUNTS HERE */
          uint64_t load_count;
          uint64_t store_count;
+         uint64_t read_miss_count;
+         uint64_t write_miss_count;
          // etc. 
       
       } trace_data;
+
+      dat_t<1> last_is_freeze;
+      uint32_t last_opcode;
 };
 

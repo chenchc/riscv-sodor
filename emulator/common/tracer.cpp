@@ -32,6 +32,8 @@ void Tracer_t::start()
    trace_data.load_count  = 0;
    trace_data.store_count = 0;
    trace_data.dcache_miss_cycles = 0;
+   trace_data.read_miss_count = 0;
+   trace_data.write_miss_count = 0;
 
    /* XXX Step 2: INITIALIZE YOUR COUNTERS HERE */
 }
@@ -61,42 +63,54 @@ void Tracer_t::tick(bool increment_inst_count)
 {
    // only collect stats if the tracer is not paused AND co-processor 
    // register cr10 is enabled.
-   if (!paused)
-   {
-      trace_data.cycles++;
+   trace_data.cycles++;
 
-      // translate from the Chisel/Emulator data wrapper to uint32_t
-      uint32_t inst = inst_ptr->lo_word();
+   // translate from the Chisel/Emulator data wrapper to uint32_t
+   uint32_t inst = inst_ptr->lo_word();
 
-      // Consult the riscv-spec.pdf for help (in particular the Major Opcode Map).
-      uint32_t opcode = getBits(inst,6,0); 
-      uint32_t opc_hi = getBits(inst,6,5); 
-      uint32_t opc_lo = getBits(inst,4,2); 
+   // Consult the riscv-spec.pdf for help (in particular the Major Opcode Map).
+   uint32_t opcode = getBits(inst,6,0); 
+   uint32_t opc_hi = getBits(inst,6,5); 
+   uint32_t opc_lo = getBits(inst,4,2); 
 
-      if (is_freeze == nullptr || *is_freeze == 0x0) {
-         // don't increment on machine-generated bubbles
-         if (increment_inst_count && inst != 0x4033)
-            trace_data.inst_count++;
-         
-         if (inst == 0x13) 
-            trace_data.nop_count++;
-         else if (inst == 0x4033) 
-            trace_data.bubble_count++;
-         else if (opcode == 0x37) //lui
-            trace_data.misc_count++;
-         else if (opcode == 0x63) 
-            trace_data.br_count++;
-         else if (opcode == 0x03 || opcode == 0x23) 
-            trace_data.ldst_count++;
-         else if (opc_lo == 0x6 || opc_lo == 0x4) 
-            trace_data.arith_count++;
+   if (is_freeze == nullptr || *is_freeze == 0x0) {
+      // don't increment on machine-generated bubbles
+      if (increment_inst_count && inst != 0x4033)
+         trace_data.inst_count++;
+      
+      if (inst == 0x13) 
+         trace_data.nop_count++;
+      else if (inst == 0x4033) 
+         trace_data.bubble_count++;
+      else if (opcode == 0x37) //lui
+         trace_data.misc_count++;
+      else if (opcode == 0x63) 
+         trace_data.br_count++;
+      else if (opcode == 0x03 || opcode == 0x23) {
+         trace_data.ldst_count++;
+         if (opcode == 0x03)
+            trace_data.load_count++;
          else
-            trace_data.misc_count++;
+            trace_data.store_count++;
       }
+      else if (opc_lo == 0x6 || opc_lo == 0x4) 
+         trace_data.arith_count++;
       else
-         trace_data.dcache_miss_cycles++;
-
+         trace_data.misc_count++;
    }
+   else {
+      trace_data.dcache_miss_cycles++;
+      if (last_is_freeze == 0x0) {
+         if (last_opcode == 0x03)
+            trace_data.read_miss_count++;
+         else if (last_opcode == 0x23)
+            trace_data.write_miss_count++;
+      }
+   }
+
+    last_is_freeze = *is_freeze;
+    last_opcode = opcode;
+
 }
 
 void Tracer_t::stop()
@@ -125,6 +139,9 @@ void Tracer_t::print()
    fprintf(logfile, "#      branch instr: %2.3f %%\n",  100.0f * ((float) trace_data.br_count   ) / trace_data.cycles);
    fprintf(logfile, "#      misc instr  : %2.3f %%\n",  100.0f * ((float) trace_data.misc_count ) / trace_data.cycles);
    fprintf(logfile, "#      D-cache miss stall: %2.3f %%\n",  100.0f * ((float) trace_data.dcache_miss_cycles ) / trace_data.cycles);
+   fprintf(logfile, "#\n");
+   fprintf(logfile, "#      Read miss rate: %2.3f %%\n",  100.0f * ((float) trace_data.read_miss_count ) / trace_data.load_count);
+   fprintf(logfile, "#      Write miss rate: %2.3f %%\n",  100.0f * ((float) trace_data.write_miss_count ) / trace_data.store_count);
    
    /* XXX Step 4. PRINT YOUR COUNTERS HERE */
    
