@@ -92,6 +92,8 @@ class DatPath(implicit conf: SodorConfiguration) extends Module
    val mem_reg_ctrl_csr_cmd  = Reg(init=CSR.N)
 
    // Writeback State
+   val wb_reg_pc            = Reg(UInt())
+   val wb_reg_inst          = Reg(Bits())
    val wb_reg_wbaddr         = Reg(UInt())
    val wb_reg_wbdata         = Reg(Bits(width = conf.xprlen))
    val wb_reg_ctrl_rf_wen    = Reg(init=Bool(false))
@@ -384,6 +386,8 @@ class DatPath(implicit conf: SodorConfiguration) extends Module
 
    when (!io.ctl.full_stall)
    {
+      wb_reg_pc := mem_reg_pc
+      wb_reg_inst := mem_reg_inst
       wb_reg_wbaddr        := mem_reg_wbaddr
       wb_reg_wbdata        := mem_wbdata
       wb_reg_ctrl_rf_wen   := Mux(io.dat.csr_xcpt, Bool(false), mem_reg_ctrl_rf_wen)
@@ -420,14 +424,14 @@ class DatPath(implicit conf: SodorConfiguration) extends Module
       , if_reg_pc
       , dec_reg_pc
       , exe_reg_pc
-      , Reg(next=exe_reg_pc)
-      , Reg(next=Reg(next=exe_reg_pc))
+      , mem_reg_pc
+      , wb_reg_pc
       // TODO come up with a way to print out the opcode name, instead of just the number
       , if_inst(6,0)
       , dec_reg_inst(6,0)
       , exe_reg_inst(6,0)
-      , Reg(next=exe_reg_inst(6,0))
-      , Reg(next=Reg(next=exe_reg_inst(6,0)))
+      , mem_reg_inst(6,0)
+      , wb_reg_inst(6,0)
       , Mux(io.ctl.full_stall, Str("FREEZE"),
         Mux(io.ctl.dec_stall, Str("STALL "), Str(" ")))
       , Mux(io.ctl.exe_pc_sel === UInt(1), Str("BJ"),

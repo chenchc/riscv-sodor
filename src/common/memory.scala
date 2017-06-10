@@ -95,6 +95,36 @@ class ScratchPadMemory(num_core_ports: Int, num_bytes: Int = (1 << 21))(implicit
 
    for (i <- 0 until num_core_ports)
    {
+      val req_valid      = Bool()
+      val req_addr       = Bits()
+      val req_data       = Bits()
+      val req_fcn        = Bits()
+      val req_typ        = Bits()
+      val byte_shift_amt = Bits()
+      val req_valid_reg      = Reg(Bool())
+      val req_addr_reg       = Reg(Bits())
+      val req_data_reg       = Reg(Bits())
+      val req_fcn_reg        = Reg(Bits())
+      val req_typ_reg        = Reg(Bits())
+      val byte_shift_amt_reg = Reg(Bits()) 
+
+      if (i == 0) {
+         req_valid      := io.core_ports(i).req.valid
+         req_addr       := io.core_ports(i).req.bits.addr
+         req_data       := io.core_ports(i).req.bits.data
+         req_fcn        := io.core_ports(i).req.bits.fcn
+         req_typ        := io.core_ports(i).req.bits.typ
+         byte_shift_amt := io.core_ports(i).req.bits.addr(1,0)
+      }
+      else if (i == 1) {
+         req_valid      := req_valid_reg 
+         req_addr       := req_addr_reg
+         req_data       := req_data_reg
+         req_fcn        := req_fcn_reg
+         req_typ        := req_typ_reg   
+         byte_shift_amt := byte_shift_amt_reg
+      }
+
       io.core_ports(i).req.ready := Bool(true)
       if(i == 1) {
          io.core_ports(i).resp.valid := Bool(false)
@@ -104,6 +134,12 @@ class ScratchPadMemory(num_core_ports: Int, num_bytes: Int = (1 << 21))(implicit
          {
             io.core_ports(i).resp.valid:=Bool(false)
             io.core_ports(i).req.ready:=Bool(true)
+            req_valid_reg      := io.core_ports(i).req.valid
+            req_addr_reg       := io.core_ports(i).req.bits.addr
+            req_data_reg       := io.core_ports(i).req.bits.data
+            req_fcn_reg        := io.core_ports(i).req.bits.fcn
+            req_typ_reg        := io.core_ports(i).req.bits.typ
+            byte_shift_amt_reg := io.core_ports(i).req.bits.addr(1,0)
             when(io.core_ports(i).req.valid)
             {
                state:=s_load
@@ -113,6 +149,12 @@ class ScratchPadMemory(num_core_ports: Int, num_bytes: Int = (1 << 21))(implicit
          {
             io.core_ports(i).resp.valid:=Bool(false)
             io.core_ports(i).req.ready:=Bool(false)
+            req_valid_reg      := req_valid_reg      
+            req_addr_reg       := req_addr_reg       
+            req_data_reg       := req_data_reg       
+            req_fcn_reg        := req_fcn_reg        
+            req_typ_reg        := req_typ_reg        
+            byte_shift_amt_reg := byte_shift_amt_reg 
             when(counter.inc())
             {
                state:=s_valid
@@ -120,7 +162,13 @@ class ScratchPadMemory(num_core_ports: Int, num_bytes: Int = (1 << 21))(implicit
          }
          is(s_valid){
             io.core_ports(i).resp.valid:=Bool(true)
-            io.core_ports(i).req.ready:=Bool(true)
+            io.core_ports(i).req.ready:=Bool(false)
+            req_valid_reg      := req_valid_reg      
+            req_addr_reg       := req_addr_reg       
+            req_data_reg       := req_data_reg       
+            req_fcn_reg        := req_fcn_reg        
+            req_typ_reg        := req_typ_reg        
+            byte_shift_amt_reg := byte_shift_amt_reg 
             state:=s_idle
          }
 
@@ -131,12 +179,6 @@ class ScratchPadMemory(num_core_ports: Int, num_bytes: Int = (1 << 21))(implicit
          io.core_ports(i).req.ready := Bool(true)
       }
       
-      val req_valid      = io.core_ports(i).req.valid
-      val req_addr       = io.core_ports(i).req.bits.addr
-      val req_data       = io.core_ports(i).req.bits.data
-      val req_fcn        = io.core_ports(i).req.bits.fcn
-      val req_typ        = io.core_ports(i).req.bits.typ
-      val byte_shift_amt = io.core_ports(i).req.bits.addr(1,0)
       val bit_shift_amt  = Cat(byte_shift_amt, UInt(0,3))
 
       // read access
@@ -152,8 +194,17 @@ class ScratchPadMemory(num_core_ports: Int, num_bytes: Int = (1 << 21))(implicit
       read_data_out := Mux(bank_idx, data_bank1(data_idx), data_bank0(data_idx))
       rdata_out     := LoadDataGen((read_data_out >> bit_shift_amt), req_typ)
 
-      io.core_ports(i).resp.bits.data := rdata_out
-
+      if (i == 1) {
+         when (state === s_valid) {
+            io.core_ports(i).resp.bits.data := rdata_out
+         }
+         .otherwise {
+            io.core_ports(i).resp.bits.data := Bits(0)
+         }
+      }
+      else {
+         io.core_ports(i).resp.bits.data := rdata_out
+      }
 
       // write access
       when (req_valid && req_fcn === M_XWR)
