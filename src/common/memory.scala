@@ -64,7 +64,7 @@ class MemResp(data_width: Int) extends Bundle
 // NOTE: the default is enormous (and may crash your computer), but is bound by
 // what the fesvr expects the smallest memory size to be.  A proper fix would
 // be to modify the fesvr to expect smaller sizes.
-class ScratchPadMemory(num_core_ports: Int, num_bytes: Int = (1 << 21), seq_read: Boolean = false)(implicit conf: SodorConfiguration) extends Module
+class ScratchPadMemory(num_core_ports: Int, num_bytes: Int = (1 << 21))(implicit conf: SodorConfiguration) extends Module
 {
    val io = new Bundle
    {
@@ -80,12 +80,9 @@ class ScratchPadMemory(num_core_ports: Int, num_bytes: Int = (1 << 21), seq_read
    val num_banks = 2
    val num_lines = num_bytes / num_bytes_per_line
    val count = 10
-   if (seq_read)
-      println("\n    Sodor Tile: creating Synchronous Scratchpad Memory of size " + num_lines*num_bytes_per_line/1024 + " kB\n")
-   else
-      println("\n    Sodor Tile: creating Asynchronous Scratchpad Memory of size " + num_lines*num_bytes_per_line/1024 + " kB\n")
-   val data_bank0 = Mem(Bits(width = 8*num_bytes_per_line/num_banks), num_lines, seqRead = seq_read)
-   val data_bank1 = Mem(Bits(width = 8*num_bytes_per_line/num_banks), num_lines, seqRead = seq_read)
+   println("\n    Sodor Tile: creating Asynchronous Scratchpad Memory of size " + num_lines*num_bytes_per_line/1024 + " kB\n")
+   val data_bank0 = Mem(Bits(width = 8*num_bytes_per_line/num_banks), num_lines, seqRead = false)
+   val data_bank1 = Mem(Bits(width = 8*num_bytes_per_line/num_banks), num_lines, seqRead = false)
 
 
    // constants
@@ -99,44 +96,37 @@ class ScratchPadMemory(num_core_ports: Int, num_bytes: Int = (1 << 21), seq_read
    for (i <- 0 until num_core_ports)
    {
       io.core_ports(i).req.ready := Bool(true)
-      if (seq_read) {
-         io.core_ports(i).resp.valid := Reg(next = io.core_ports(i).req.valid)
-		 io.core_ports(i).req.ready := Bool(true)
-      }
-	  else{ 
-      	if(i == 1){
+      if(i == 1) {
          io.core_ports(i).resp.valid := Bool(false)
-	 val counter = Counter(50 - 1) // 50 cycles for a memory operation
-	 switch(state){
-		is(s_idle)
-	 	{
-	 		io.core_ports(i).resp.valid := Bool(false)
-			io.core_ports(i).req.ready := Bool(true)
-			when (io.core_ports(i).req.valid)
-			{
-				state := s_load	
-			}
-		}
-	 	is(s_load)
-		{
-			io.core_ports(i).resp.valid := Bool(false)
-			io.core_ports(i).req.ready := Bool(false)
-	 		when (counter.inc())
-			{
-				state := s_valid
-			}
-		}
-		is(s_valid){
-			io.core_ports(i).resp.valid := Bool(true)
-			io.core_ports(i).req.ready := Bool(true)
-			state := s_idle
+         val counter = Counter(50 - 1) // 50 cycles for a memory operation
+         switch(state){
+         is(s_idle)
+         {
+            io.core_ports(i).resp.valid:=Bool(false)
+            io.core_ports(i).req.ready:=Bool(true)
+            when(io.core_ports(i).req.valid)
+            {
+               state:=s_load
+            }
+         }
+         is(s_load)
+         {
+            io.core_ports(i).resp.valid:=Bool(false)
+            io.core_ports(i).req.ready:=Bool(false)
+            when(counter.inc())
+            {
+               state:=s_valid
+            }
+         }
+         is(s_valid){
+            io.core_ports(i).resp.valid:=Bool(true)
+            io.core_ports(i).req.ready:=Bool(true)
+            state:=s_idle
+         }
 
-		}
-
-	 }
-         // io.core_ports(i).resp.valid := ShiftRegister(io.core_ports(i).req.valid, 2, Bool(true));
-	}
-	else 
+         }
+      }
+      else { 
          io.core_ports(i).resp.valid := io.core_ports(i).req.valid
          io.core_ports(i).req.ready := Bool(true)
       }
@@ -159,16 +149,8 @@ class ScratchPadMemory(num_core_ports: Int, num_bytes: Int = (1 << 21), seq_read
       val rdata_out = Bits()
 
 
-      if (seq_read)
-      {
-         read_data_out := Mux(r_bank_idx, data_bank1(r_data_idx), data_bank0(r_data_idx))
-         rdata_out     := LoadDataGen((read_data_out >> Reg(next=bit_shift_amt)), Reg(next=req_typ))
-      }
-      else
-      {
-         read_data_out := Mux(bank_idx, data_bank1(data_idx), data_bank0(data_idx))
-         rdata_out     := LoadDataGen((read_data_out >> bit_shift_amt), req_typ)
-      }
+      read_data_out := Mux(bank_idx, data_bank1(data_idx), data_bank0(data_idx))
+      rdata_out     := LoadDataGen((read_data_out >> bit_shift_amt), req_typ)
 
       io.core_ports(i).resp.bits.data := rdata_out
 
