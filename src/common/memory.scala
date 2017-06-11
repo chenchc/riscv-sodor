@@ -235,13 +235,7 @@ class ScratchPadMemory(num_core_ports: Int, num_bytes: Int = (1 << 21))(implicit
          when (req_valid && req_fcn === M_XWRBURST) {
             for (j <- 0 until (burst_len / num_bytes_per_line)) {
                val data_idx_burst = Cat(req_addr >> burst_len_bit, Bits(j, width = (burst_len_bit - idx_lsb)))
-
-               // Here I intentionally mask out the access from DCache to bank0, 
-               // although the burst data interleave over both banks. The reason
-               // is that bank0 stores instructions and should be read-only 
-               // during runtime.
-               //data_bank0(data_idx_burst) := io.core_ports(i).req.bits.burst_data(j * 2)
-
+               data_bank0(data_idx_burst) := io.core_ports(i).req.bits.burst_data(j * 2)
                data_bank1(data_idx_burst) := io.core_ports(i).req.bits.burst_data(j * 2 + 1)
             }
          }
