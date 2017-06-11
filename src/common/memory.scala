@@ -33,9 +33,10 @@ trait MemoryOpConstants
    val MT_HU = Bits(6, 3)
    val MT_WU = Bits(7, 3)
 
-   val M_X   = Bits("b0", 1)
-   val M_XRD = Bits("b0", 1) // int load
-   val M_XWR = Bits("b1", 1) // int store
+   val M_X   = Bits("b00", 2)
+   val M_XRD = Bits("b00", 2) // regular and burst read
+   val M_XWR = Bits("b10", 2) // regular write
+   val M_XWRBURST = Bits("b11", 2) // burst write
 }
 
 // from the pov of the datapath
@@ -50,6 +51,7 @@ class MemReq(data_width: Int)(implicit conf: SodorConfiguration) extends Bundle
 {
    val addr = UInt(width = conf.xprlen)
    val data = Bits(width = data_width)
+   val burst_data = Vec.fill(16) { Bits(width = data_width) }
    val fcn  = Bits(width = M_X.getWidth)  // memory function code
    val typ  = Bits(width = MT_X.getWidth) // memory type
   override def clone = { new MemReq(data_width).asInstanceOf[this.type] }
@@ -58,6 +60,7 @@ class MemReq(data_width: Int)(implicit conf: SodorConfiguration) extends Bundle
 class MemResp(data_width: Int) extends Bundle
 {
    val data = Bits(width = data_width)
+   val burst_data = Vec.fill(16) { Bits(width = data_width) }
   override def clone = { new MemResp(data_width).asInstanceOf[this.type] }
 }
 
@@ -76,18 +79,19 @@ class ScratchPadMemory(num_core_ports: Int, num_bytes: Int = (1 << 21))(implicit
    // HTIF min packet size is 8 bytes 
    // but 32b core will access in 4 byte chunks
    // thus we will bank the scratchpad
-   val num_bytes_per_line = 8
+   val num_bytes_per_line = 4 + 4
    val num_banks = 2
    val num_lines = num_bytes / num_bytes_per_line
    val count = 10
    println("\n    Sodor Tile: creating Asynchronous Scratchpad Memory of size " + num_lines*num_bytes_per_line/1024 + " kB\n")
-   val data_bank0 = Mem(Bits(width = 8*num_bytes_per_line/num_banks), num_lines, seqRead = false)
-   val data_bank1 = Mem(Bits(width = 8*num_bytes_per_line/num_banks), num_lines, seqRead = false)
-
+   val data_bank0 = Mem(Bits(width = 8*4), num_lines, seqRead = false)
+   val data_bank1 = Mem(Bits(width = 8*4), num_lines, seqRead = false)
+   val burst_len = 64
 
    // constants
    val idx_lsb = log2Up(num_bytes_per_line) 
-   val bank_bit = log2Up(num_bytes_per_line/num_banks) 
+   val bank_bit = log2Up(num_bytes_per_line/num_banks)
+   val burst_len_bit = log2Up(burst_len)
    
    val s_idle :: s_load :: s_valid :: Nil = Enum(UInt(),3)
    val state = Reg(init = s_idle)
@@ -100,13 +104,11 @@ class ScratchPadMemory(num_core_ports: Int, num_bytes: Int = (1 << 21))(implicit
       val req_data       = Bits()
       val req_fcn        = Bits()
       val req_typ        = Bits()
-      val byte_shift_amt = Bits()
       val req_valid_reg      = Reg(Bool())
       val req_addr_reg       = Reg(Bits())
       val req_data_reg       = Reg(Bits())
       val req_fcn_reg        = Reg(Bits())
       val req_typ_reg        = Reg(Bits())
-      val byte_shift_amt_reg = Reg(Bits()) 
 
       if (i == 0) {
          req_valid      := io.core_ports(i).req.valid
@@ -114,7 +116,6 @@ class ScratchPadMemory(num_core_ports: Int, num_bytes: Int = (1 << 21))(implicit
          req_data       := io.core_ports(i).req.bits.data
          req_fcn        := io.core_ports(i).req.bits.fcn
          req_typ        := io.core_ports(i).req.bits.typ
-         byte_shift_amt := io.core_ports(i).req.bits.addr(1,0)
       }
       else if (i == 1) {
          req_valid      := req_valid_reg 
@@ -122,7 +123,6 @@ class ScratchPadMemory(num_core_ports: Int, num_bytes: Int = (1 << 21))(implicit
          req_data       := req_data_reg
          req_fcn        := req_fcn_reg
          req_typ        := req_typ_reg   
-         byte_shift_amt := byte_shift_amt_reg
       }
 
       io.core_ports(i).req.ready := Bool(true)
@@ -139,7 +139,6 @@ class ScratchPadMemory(num_core_ports: Int, num_bytes: Int = (1 << 21))(implicit
             req_data_reg       := io.core_ports(i).req.bits.data
             req_fcn_reg        := io.core_ports(i).req.bits.fcn
             req_typ_reg        := io.core_ports(i).req.bits.typ
-            byte_shift_amt_reg := io.core_ports(i).req.bits.addr(1,0)
             when(io.core_ports(i).req.valid)
             {
                state:=s_load
@@ -154,7 +153,6 @@ class ScratchPadMemory(num_core_ports: Int, num_bytes: Int = (1 << 21))(implicit
             req_data_reg       := req_data_reg       
             req_fcn_reg        := req_fcn_reg        
             req_typ_reg        := req_typ_reg        
-            byte_shift_amt_reg := byte_shift_amt_reg 
             when(counter.inc())
             {
                state:=s_valid
@@ -168,7 +166,6 @@ class ScratchPadMemory(num_core_ports: Int, num_bytes: Int = (1 << 21))(implicit
             req_data_reg       := req_data_reg       
             req_fcn_reg        := req_fcn_reg        
             req_typ_reg        := req_typ_reg        
-            byte_shift_amt_reg := byte_shift_amt_reg 
             state:=s_idle
          }
 
@@ -179,12 +176,10 @@ class ScratchPadMemory(num_core_ports: Int, num_bytes: Int = (1 << 21))(implicit
          io.core_ports(i).req.ready := Bool(true)
       }
       
+      val byte_shift_amt = req_addr(1, 0)
       val bit_shift_amt  = Cat(byte_shift_amt, UInt(0,3))
 
       // read access
-      val r_data_idx = Reg(outType=UInt())
-      val r_bank_idx = Reg(outType=Bool())
-
       val data_idx = req_addr >> UInt(idx_lsb)
       val bank_idx = req_addr(bank_bit)
       val read_data_out = Bits()
@@ -222,10 +217,34 @@ class ScratchPadMemory(num_core_ports: Int, num_bytes: Int = (1 << 21))(implicit
             data_bank0.write(data_idx, wdata, wmask)
          }
       }
-      .elsewhen (req_valid && req_fcn === M_XRD)
-      {
-         r_data_idx := data_idx
-         r_bank_idx := bank_idx
+
+      // Burst read
+      io.core_ports(i).resp.bits.burst_data := Bits(0)
+      if (i == 1) {
+         when (state === s_valid) {
+            for (j <- 0 until (burst_len / num_bytes_per_line)) {
+               val data_idx_burst = Cat(req_addr >> burst_len_bit, Bits(j, width = (burst_len_bit - idx_lsb)))
+               io.core_ports(i).resp.bits.burst_data(j * 2) := data_bank0(data_idx_burst)            
+               io.core_ports(i).resp.bits.burst_data(j * 2 + 1) := data_bank1(data_idx_burst)            
+            }
+         }
+      }
+
+      // Burst write
+      if (i == 1) {
+         when (req_valid && req_fcn === M_XWRBURST) {
+            for (j <- 0 until (burst_len / num_bytes_per_line)) {
+               val data_idx_burst = Cat(req_addr >> burst_len_bit, Bits(j, width = (burst_len_bit - idx_lsb)))
+
+               // Here I intentionally mask out the access from DCache to bank0, 
+               // although the burst data interleave over both banks. The reason
+               // is that bank0 stores instructions and should be read-only 
+               // during runtime.
+               //data_bank0(data_idx_burst) := io.core_ports(i).req.bits.burst_data(j * 2)
+
+               data_bank1(data_idx_burst) := io.core_ports(i).req.bits.burst_data(j * 2 + 1)
+            }
+         }
       }
    }  
 
